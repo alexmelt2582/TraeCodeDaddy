@@ -28,11 +28,13 @@
 
 ## 快速开始
 
-安装版使用开始菜单或桌面快捷方式启动。快捷方式会通过 `scripts\launch-hidden.vbs` 启动完整链路：
+推荐使用桌面 `TraeCode CN` 快捷方式启动（已指向 `scripts\launch-hidden.vbs`），它会启动完整链路：
 
 1. 启动 Trae CN，并打开本地 CDP 端口。
 2. 启动本地守护进程。
 3. 在 TRAE 渲染进程中注入增强助手面板。
+
+注意：直接双击 `Trae CN.exe` 不会携带 CDP 参数，面板不会注入；必须通过 `launch-hidden.vbs` 或 `start` 命令启动。开始菜单中的 `TraeCode CN` 快捷方式仍指向原始可执行文件，不在注入链路内。
 
 也可以使用命令行：
 
