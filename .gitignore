@@ -1,0 +1,12 @@
+data/
+.git-data/
+.git-meta/
+logs/
+node_modules/
+dist/
+.idea/
+.workbuddy/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

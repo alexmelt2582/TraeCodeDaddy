@@ -1,0 +1,26 @@
+{
+  "name": "trae-code-cn-enhancer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TraeCode CN desktop enhancement assistant",
+  "type": "module",
+  "scripts": {
+    "start": "node src/launcher.js",
+    "daemon": "node src/daemon.js",
+    "service": "node scripts/service.js",
+    "watchdog": "node scripts/watchdog.js",
+    "doctor": "node scripts/doctor.js",
+    "build:exe": "node scripts/build-exe.js",
+    "build:installer": "node scripts/win/build-installer.js",
+    "git:status": "git --git-dir=.git-meta --work-tree=. status --short",
+    "test": "node --test",
+    "check": "node scripts/check-syntax.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6"
+  }
+}

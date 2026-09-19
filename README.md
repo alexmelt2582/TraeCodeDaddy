@@ -1,0 +1,180 @@
+# TraeCode CN 增强助手
+
+一个面向 Windows 的本地多账号增强助手，用于管理 `Trae CN`（TraeCode CN）账号、切换登录、自动签到、导入导出和登录信息维护。
+
+当前开发版本：`1.0.0`。
+
+## 功能
+
+- 本地保存 Trae CN 认证快照，不修改 TRAE 安装目录，不修改 `app.asar`。
+- 一键切换已保存账号，切换过程使用事务式文件替换，失败时自动回滚。
+- 支持无感登录：浏览器完成授权后，新账号自动加入列表，并立即同步套餐、余额与签到状态。
+- 支持传统"假退出"登录：备份当前账号后进入 TRAE 登录页，登录成功后自动保存新账号。
+- 账号导出使用用户密码加密，导入不会自动切换当前账号。
+- 自动签到支持 15、30、60、120 分钟间隔，并为每个账号使用独立的 `userId` 作为设备标识。
+- 自动维护登录信息：只在临近到期时更新，平时复用现有凭据，降低把其他设备顶下线的概率。
+- 面板可以查看每个账号的手机号、套餐、余额、签到状态和登录信息有效期。
+- 非当前账号支持删除本地备份；当前正在使用的账号受到保护。
+- 设置页按"签到 / 更新 / 维护"分组，避免所有配置堆在同一页。
+- 关于页改为面向普通用户的添加、切换、迁移和数据安全说明。
+
+## 与 TraeWork 增强助手的关系
+
+本项目是 `TRAE SOLO CN（TraeWork）` 增强助手（位于 `d:\Me\副业\Trae多账号协同`）的姊妹项目，面向 `TraeCode CN`（Trae CN IDE）。两项目共享绝大部分代码：
+
+- 认证存储模型相同（`iCubeAuthInfo://*` 键），账号切换核心几乎原样复用。
+- 差异点在产品标识：Trae CN 使用 `iCubeApp.authConfig.TRAE` 的 clientId（`ono9krqynydwx5`）、`bootConfig.iCube.normal` 的账号服务地址。
+- 本地端口错开避免冲突：本助手 UI 端口 `47836`、CDP 端口 `9336`（TraeWork 助手为 `47834`/`9334`），两个增强可同时运行。
+
+## 快速开始
+
+安装版使用开始菜单或桌面快捷方式启动。快捷方式会通过 `scripts\launch-hidden.vbs` 启动完整链路：
+
+1. 启动 Trae CN，并打开本地 CDP 端口。
+2. 启动本地守护进程。
+3. 在 TRAE 渲染进程中注入增强助手面板。
+
+也可以使用命令行：
+
+```powershell
+node scripts\service.js start
+node scripts\service.js daemon
+node scripts\service.js status
+node scripts\service.js stop
+```
+
+## 命令
+
+| 命令 | 作用 |
+| --- | --- |
+| `start` | 启动 Trae CN、CDP、后台服务和面板注入。 |
+| `daemon` | 只确保后台服务运行，并启动守护进程。 |
+| `stop` | 根据精确 PID 停止守护进程和后台监督进程。 |
+| `restart` | 先执行 `stop`，再执行 `daemon`。 |
+| `status` | 显示服务、CDP、后台监督、自启动和端口状态。 |
+| `locate` | 显示 Trae CN 路径以及探测过程。 |
+| `configure` | 保存或清除 Trae CN 可执行文件路径。 |
+| `net` | 直接探测项目所需域名，不读取或修改系统代理。 |
+| `install` | 注册登录时自动启动后台服务。 |
+| `uninstall` | 移除登录时自启动。 |
+| `tray` | 启动托盘入口。 |
+| `tray-stop` | 停止托盘入口。 |
+| `logs` | 查看守护进程和后台监督日志。 |
+
+`stop` 只停止项目自己的进程，不会批量结束 Node、Electron 或 TRAE 进程。
+
+## 账号管理
+
+账号认证快照保存在本机的 `data\accounts` 下。切换账号时只替换账号相关的 `iCube*` 状态，工作区、窗口状态、扩展和其他 TRAE 设置保持不变。
+
+面板中的"登录"提供两种方式：
+
+- **无感登录**：在浏览器完成授权，不退出 TRAE。登录成功后，新账号会立即出现在账号列表，并同步套餐、余额、签到状态和登录信息有效期。
+- **假退出**：先备份当前账号，再让 TRAE 进入登录页。登录成功后自动保存新账号。
+
+导入导出是账号迁移，不是多设备共享。原设备继续刷新登录信息后，另一台设备上的副本可能失效并出现 401，需要重新登录。导出文件始终需要密码加密。
+
+## 设置
+
+### 签到
+
+- 自动签到可开启或关闭。
+- 支持固定间隔：15、30、60、120 分钟。
+- 支持 TRAE 重启后立即补签。
+- 今天已经签到的账号会跳过，不会重复领取。
+
+### 更新
+
+- 默认禁止 TRAE 自动更新，避免更新过程打断当前会话。
+- 关闭自动更新后，仍然可以在 TRAE 菜单中手动检查更新。
+- 修改 `update.mode` 只定点写入 TRAE 的 `User\settings.json`，会保留注释和其他设置。
+
+### 维护
+
+- 可以单独重启增强助手的后台服务。
+- 重启不会退出 TRAE，也不会修改当前登录账号。
+
+## 数据与安全
+
+- 本地服务只监听 `127.0.0.1`。
+- 日志会过滤 token、JWT、授权头和敏感查询参数。
+- 不记录访问令牌、刷新令牌、Cookie、私钥或完整认证快照。
+- 导出文件使用 scrypt 和 AES-256-GCM 加密。
+- 删除账号只删除本地备份，不会退出 TRAE 当前登录。
+- 当前正在使用的账号不允许删除。
+
+## 安装包和便携版
+
+构建便携版：
+
+```powershell
+npm install
+npm run build:exe
+```
+
+构建安装包：
+
+```powershell
+npm run build:installer
+```
+
+安装包输出目录为 `dist\installer`，便携版输出目录为 `dist\portable`。
+
+安装包当前未签名，Windows SmartScreen 可能显示警告。
+
+## 升级和卸载
+
+- 覆盖运行新版安装包即可升级，账号数据会保留。
+- 便携版升级时先停止服务，再替换程序文件，保留原 `data\` 目录。
+- 卸载时会询问是否保留 `data\`。账号快照和本地 API token 都在其中，删除后不可恢复。
+
+## 故障排查
+
+先检查后台服务状态：
+
+```powershell
+node scripts\service.js status
+```
+
+网络异常时运行直连探测：
+
+```powershell
+node scripts\service.js net
+```
+
+该命令只做 DNS 和 HTTPS 直连探测。失败时会显示完整的 `cause` 链，例如 `ECONNREFUSED`、`ENOTFOUND` 或证书错误。
+
+查看日志：
+
+```powershell
+node scripts\service.js logs
+```
+
+## 开发
+
+环境要求：
+
+- Windows 10 或 Windows 11
+- Node.js 22 或更高版本
+
+```powershell
+npm test
+npm run check
+npm start
+```
+
+默认本地服务地址：`http://127.0.0.1:47836`。
+默认 CDP 地址：`127.0.0.1:9336`。
+
+## 发布
+
+发布前至少完成：
+
+```powershell
+npm test
+npm run check
+npm run build:exe
+npm run build:installer
+```
+
+然后生成安装包、便携 ZIP 和 SHA256 校验文件。后续 git 提交信息和发布更新说明统一使用中文。
