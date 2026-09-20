@@ -96,6 +96,39 @@ test("v2 credits summary exposes the same remaining balance shown by TRAE", () =
   assert.equal(insights.quota.usageExhausted, false);
 });
 
+test("credits scoped to a non-default endpoint (TraeWord/Work) are excluded from the total", () => {
+  const creditPack = (desc, credits, endpoint) => ({
+    display_desc: desc,
+    entitlement_base_info: {
+      product_type: 2,
+      end_time: 1791940585,
+      available_endpoint: endpoint,
+      quota: { credits_limit: credits },
+    },
+    usage: { credits_amount: 0 },
+    is_hide: false,
+    status: 1,
+  });
+  const insights = parseTraeAccountInsights({
+    payStatus: { user_pay_identity_str: "Free", detail: {} },
+    usageResponse: {
+      is_credits_billing: true,
+      usage_summary: { total_amount: 4800, consumed_amount: 0 },
+      user_entitlement_pack_list: [
+        creditPack("每月登录赠送", 500, 0),
+        creditPack("老用户福利", 2000, 0),
+        creditPack("老用户福利", 2000, 1),
+        creditPack("签到奖励", 150, 0),
+        creditPack("签到奖励", 150, 0),
+      ],
+    },
+  });
+  assert.equal(insights.quota.model, "credits");
+  assert.equal(insights.credits.total, 2800);
+  assert.equal(insights.credits.remaining, 2800);
+  assert.equal(insights.credits.segments.length, 4);
+});
+
 test("fast request remaining balance is derived from quota and usage", () => {
   const insights = parseTraeAccountInsights({
     payStatus: { user_pay_identity_str: "CNExpress", detail: {} },

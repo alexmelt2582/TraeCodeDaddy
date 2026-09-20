@@ -120,6 +120,49 @@ let checkinInFlight = null;
 let keepaliveInFlight = null;
 
 /**
+ * Failed credits refreshes retry on a short back-off instead of waiting for the
+ * next scheduled sweep, so a transient pay_status timeout (e.g. 10s connect
+ * timeout) can no longer leave stale credits showing for hours. Timers are
+ * unref'd — they are best effort and must never keep a shutdown hanging.
+ */
+const INSIGHTS_RETRY_BASE_MS = 10 * 60 * 1000;
+const INSIGHTS_RETRY_MAX_MS = 30 * 60 * 1000;
+const insightsRetryTimers = new Map();
+const insightsRetryAttempts = new Map();
+
+function scheduleInsightsRetry(accountId, maskedUserId) {
+  const previous = insightsRetryTimers.get(accountId);
+  if (previous) clearTimeout(previous);
+  const attempt = insightsRetryAttempts.get(accountId) || 0;
+  const nextAttempt = attempt + 1;
+  const backoff = INSIGHTS_RETRY_BASE_MS * 2 ** Math.min(nextAttempt - 1, 3);
+  const delayMs = Math.min(backoff, INSIGHTS_RETRY_MAX_MS) + Math.floor(Math.random() * 30_000);
+  const timer = setTimeout(() => {
+    insightsRetryTimers.delete(accountId);
+    void refreshAccountsInsights([accountId]).catch((error) => {
+      console.warn(
+        `[insights] pay_status retry for account ${maskedUserId} aborted: ${error?.message || error}`,
+      );
+    });
+  }, delayMs);
+  timer.unref?.();
+  insightsRetryAttempts.set(accountId, nextAttempt);
+  insightsRetryTimers.set(accountId, timer);
+  console.warn(
+    `[insights] pay_status refresh for account ${maskedUserId} failed; retrying in ~${Math.round(delayMs / 60_000)} min (attempt ${nextAttempt})`,
+  );
+}
+
+function cancelInsightsRetry(accountId) {
+  const timer = insightsRetryTimers.get(accountId);
+  if (timer) {
+    clearTimeout(timer);
+    insightsRetryTimers.delete(accountId);
+  }
+  insightsRetryAttempts.delete(accountId);
+}
+
+/**
  * Assigned by `main()` once the HTTP server is listening. Restarting is only
  * meaningful from that point on, and a hook keeps `route()` free of the server's
  * local state.
@@ -435,9 +478,15 @@ async function refreshAccountsInsights(accountIds = null) {
         await accountStore.saveSnapshot(account.id, refreshed.snapshot);
       }
       const saved = await accountStore.saveInsights(account.id, refreshed.insights);
+      cancelInsightsRetry(account.id);
+      console.log(`[insights] refreshed account ${account.maskedUserId || account.id}: ${refreshed.insights?.plan || "plan=?"}`);
       results.push({ id: account.id, ok: true, account: saved });
     } catch (error) {
       const message = error.message || String(error);
+      scheduleInsightsRetry(account.id, account.maskedUserId || account.id);
+      console.error(
+        `[insights] refresh failed for account ${account.maskedUserId || account.id} (${account.maskedEmail || "no email"}): ${message}`,
+      );
       const saved = await accountStore.saveInsights(account.id, {
         ...(account.insights || {}),
         error: message,
@@ -447,12 +496,14 @@ async function refreshAccountsInsights(accountIds = null) {
     }
   }
 
-  return {
+  const outcome = {
     total: results.length,
     updated: results.filter((result) => result.ok).length,
     failed: results.filter((result) => !result.ok).length,
     results,
   };
+  console.log(`[insights] refresh ${outcome.updated}/${outcome.total} ok, ${outcome.failed} failed`);
+  return outcome;
 }
 
 function checkinDateKey(now = Date.now()) {
@@ -560,6 +611,9 @@ async function checkinOneAccount(
       reason,
       updatedAt: new Date().toISOString(),
     });
+    console.log(
+      `[checkin] account ${account.maskedUserId || account.id} (${account.maskedEmail || "no email"}) reason=${reason} claimed=${result.claimed} reward=${reward} credits=${result.status.credits}`,
+    );
     return {
       id: account.id,
       ok: true,
@@ -571,6 +625,9 @@ async function checkinOneAccount(
     };
   } catch (error) {
     const message = error.message || String(error);
+    console.error(
+      `[checkin] account ${account.maskedUserId || account.id} reason=${reason} failed: ${message}`,
+    );
     const saved = await accountStore.saveCheckin(account.id, {
       ...(account.checkin || {}),
       date,
@@ -604,13 +661,31 @@ async function runAccountCheckin(
       results.push(await checkinOneAccount(account, { force, reason, allowTokenRefresh }));
       if (selected.length > 1) await delay(350);
     }
-    return {
+    const summary = {
       total: results.length,
       checkedIn: results.filter((result) => result.ok && !result.skipped).length,
       skipped: results.filter((result) => result.ok && result.skipped).length,
       failed: results.filter((result) => !result.ok).length,
       results,
     };
+    console.log(
+      `[checkin] ${reason} done: checked=${summary.checkedIn} skipped=${summary.skipped} failed=${summary.failed}`,
+    );
+    // A new reward can change the total, so pull fresh credits immediately
+    // instead of leaving the panel on the last cached value for hours. The
+    // panel-open and import flows refresh after this call on their own, so only
+    // the scheduled and manual runs refresh here to avoid redundant calls.
+    if (
+      summary.checkedIn > 0 &&
+      (reason === "scheduled" || reason === "manual")
+    ) {
+      try {
+        await refreshAccountsInsights();
+      } catch (error) {
+        console.warn(`[checkin] post-check-in credit refresh failed: ${error?.message || error}`);
+      }
+    }
+    return summary;
   })();
   try {
     return await checkinInFlight;

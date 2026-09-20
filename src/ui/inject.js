@@ -1906,15 +1906,21 @@
       });
       if (generation !== insightsRefreshGeneration) return;
       await refresh();
-      if (manual) {
-        const details = failureDetails(result);
-        const base = result.failed
-          ? `额度已更新，${result.failed} 个账号失败`
-          : "账号额度已更新";
-        showToast(details ? `${base} — ${details}` : base, result.failed > 0);
+      const details = failureDetails(result);
+      if (result.failed) {
+        // Failures are worth surfacing even for automatic refreshes (panel open,
+        // tab switch); otherwise a silent timeout leaves stale credits behind.
+        showToast(
+          details
+            ? `额度刷新失败（${result.failed} 个账号）— ${details}`
+            : `额度刷新失败（${result.failed} 个账号）`,
+          true,
+        );
+      } else if (manual) {
+        showToast("账号额度已更新", false);
       }
     } catch (error) {
-      if (manual) showToast(error.message || String(error), true);
+      showToast(`额度刷新失败：${error.message || String(error)}`, true);
     } finally {
       if (manual) button.disabled = false;
     }

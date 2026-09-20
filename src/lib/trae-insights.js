@@ -111,10 +111,19 @@ function parseCreditsUsage(usageResponse, packs) {
   let segmentTotal = 0;
   let segmentUsed = 0;
   let unlimited = false;
+  let excludedEndpoint = false;
 
   for (const pack of packs) {
     const quota = packQuota(pack);
     const limit = numberValue(quota, "credits_limit");
+    // Endpoints other than the default scope credits to a secondary product
+    // (e.g. TraeWord/Work). TraeCode can only spend the default-endpoint credits,
+    // so scoped packs are excluded to keep the total in line with the IDE.
+    const endpoint = numberValue(nested(pack, "entitlement_base_info"), "available_endpoint");
+    if (endpoint === 1) {
+      excludedEndpoint = true;
+      continue;
+    }
     const used = numberValue(nested(pack, "usage"), "credits_amount") ?? 0;
     if (limit === -1) {
       unlimited = true;
@@ -135,8 +144,13 @@ function parseCreditsUsage(usageResponse, packs) {
 
   const summaryTotal = numberValue(summary, "total_amount");
   const summaryUsed = numberValue(summary, "consumed_amount");
-  const total = summaryTotal !== null && summaryTotal > 0 ? summaryTotal : segmentTotal;
-  const used = summaryUsed !== null ? summaryUsed : segmentUsed;
+  // `usage_summary.total_amount` covers every endpoint, so it would undo the
+  // endpoint filter above. When a scoped pack was excluded, the total/used must
+  // come from the remaining (TraeCode-general) segments instead.
+  const total = !excludedEndpoint && summaryTotal !== null && summaryTotal > 0
+    ? summaryTotal
+    : segmentTotal;
+  const used = !excludedEndpoint && summaryUsed !== null ? summaryUsed : segmentUsed;
   const hasCredits =
     unlimited ||
     total > 0 ||
